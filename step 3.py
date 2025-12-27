@@ -30,9 +30,9 @@ except Exception:
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 CONFIG = {
     # Adjust if your files live elsewhere
-    "observed_csv": r"C:/Research material/all trade data/import RI/observed_coefficients.csv",
-    "placebo_csv":  r"C:/Research material/all trade data/import RI/coeff_ri.csv",
-    "plots_dir":    r"C:/Research material/all trade data/import RI/ri_plots",
+    "observed_csv": r"",
+    "placebo_csv":  r"",
+    "plots_dir":    r"",
 
     # Plot settings
     "bins": 50,
@@ -45,7 +45,7 @@ CONFIG = {
 
     # Combined PDF
     "make_pdf": True,
-    "pdf_path": r"C:/Research material/all trade data/import RI/ri_plots/ri_all_specs.pdf",
+    "pdf_path": r"",
 }
 
 # Pretty names for countries/blocks
@@ -210,3 +210,4 @@ def main(cfg=CONFIG):
 
 if __name__ == "__main__":
     main()
+
