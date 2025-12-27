@@ -22,12 +22,12 @@ Randomization Inference (group-level spatial kernel):
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 CONFIG = {
     # Input paths
-    "baseline_path": r"C:/Research material/all trade data/import/baseline_import.csv",
-    "hist_path":     r"C:/Research material/Historical data/oblast_weighted_averages.csv",
-    "selected_controls_path": r"C:/Research material/all trade data/import/results/selected_controls.csv",
+    "baseline_path": r"",
+    "hist_path":     r"",
+    "selected_controls_path": r"",
 
     # Output paths (RI output folder you set)
-    "results_dir": r"C:/Research material/all trade data/import RI",
+    "results_dir": r"",
     "placebo_csv": "placebo_current.csv",
     "coef_csv":    "coeff_ri.csv",
 
@@ -555,3 +555,4 @@ def main(cfg=CONFIG):
 
 if __name__ == "__main__":
     main()
+
