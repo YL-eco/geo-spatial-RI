@@ -24,8 +24,8 @@ Output:
 # ║ CONFIG                                                                    ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 CONFIG = {
-    "residualized_path": r"C:/Research material/all trade data/import/results/residualized_dataset.csv",
-    "results_dir":       r"C:/Research material/all trade data/import RI",
+    "residualized_path": r"",
+    "results_dir":       r"",
     "observed_csv":      "observed_coefficients.csv",
 
     # Fixed effects (match ivreghdfe absorb(ym hs_code_group_2))
@@ -181,3 +181,4 @@ def main(cfg=CONFIG):
 
 if __name__ == "__main__":
     main()
+
