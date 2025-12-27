@@ -1,218 +1,186 @@
 # Spatial Randomization Inference for 2SLS (SE / p-values)
 
-This repository provides a **three-step randomization inference (RI) workflow** to obtain **sampling uncertainty for 2SLS coefficients** under a **spatially correlated outcome model**. It is built to be **large-N friendly** and to match common two-way fixed-effect IV specifications by using fast absorption (iterative demeaning) rather than heavyweight regression frameworks.
-
-The pipeline is intentionally **modular**: each step produces a concrete output artifact that the next step consumes.
-
----
-
-## Repository Architecture
-
-step1_observed_2sls.py
-step2_spatial_randomization_inference.py
-step3_ri_visualization.py
-
-results/ # RI coefficient draws + observed coefficients
-plots/ # histograms / density plots + optional combined PDF
-
-
-**Data flow**
-
-Residualized dataset (from your main IV pipeline)
-│
-▼
-Step 1: observed coefficients (one row)
-│
-▼
-Step 2: placebo coefficient draws (many rows)
-│
-▼
-Step 3: plots + RI p-values
-
+This repo is a **3-step pipeline** that produces **randomization-inference (RI) uncertainty** for fixed-effect 2SLS coefficients under a **spatially correlated placebo outcome model**.  
+It is engineered to be **directional and restartable**: each step writes a concrete artifact that the next step consumes.
 
 ---
 
-## What This Repo Does (and Doesn’t)
+## 0) What You Get
 
-### ✅ Does
-- Compute **observed 2SLS coefficients** for multiple partner-block specifications
-- Simulate **spatially correlated placebo outcomes** using a **group-level spatial kernel**
-- Recompute 2SLS across simulations to form an **RI coefficient distribution**
-- Produce **RI p-values** and publication-ready **distribution plots**
+After running all three scripts, you will have:
 
-### ❌ Does not
-- Estimate standard errors via asymptotic formulas (this is RI, not sandwich SE)
-- Choose instruments or controls (inputs are assumed fixed)
-- Rebuild residuals from scratch unless needed by the RI engine (Step 2 handles internal residualization for simulated outcomes)
+- **Observed 2SLS coefficients** (one row)
+- **RI placebo coefficient draws** (many rows)
+- **Plots + RI p-values** (one PNG per spec, optional combined PDF)
+
+This repo does **not** run your final paper regressions; it produces an RI distribution you can use for inference.
 
 ---
 
-## Dependencies
+## 1) Repo Layout (Architecture)
 
-Python 3.9+ recommended.
+Place these scripts in the repo root:
+
+- `step1_observed_2sls.py`  
+  Computes observed 2SLS coefficients on the residualized dataset (no SE).
+
+- `step2_spatial_randomization_inference.py`  
+  Generates spatially correlated placebo outcomes and recomputes 2SLS across simulations.
+
+- `step3_ri_visualization.py`  
+  Compares observed vs placebo draws, computes RI p-values, and saves plots.
+
+Recommended folders:
+
+- `results/`  (all CSV outputs)
+- `plots/`    (PNGs and optional PDF)
+
+Data flow:
+
+(residualized dataset) ──▶ Step 1 ──▶ observed_coefficients.csv
+(residualized dataset) ──▶ Step 2 ──▶ coeff_ri.csv
+observed_coefficients.csv + coeff_ri.csv ──▶ Step 3 ──▶ plots/
+
+
+---
+
+## 2) Dependencies
+
+Python 3.9+.
 
 Install:
-```bash
+
 pip install numpy pandas matplotlib scipy
 
 Notes:
+- SciPy is used for distance/kernel calculations (Step 2).
+- KDE smoothing in Step 3 is optional; if SciPy KDE is unavailable it will still run.
 
-Step 2 uses SciPy for distance/kernel utilities.
+---
 
-Step 3 optionally uses SciPy for KDE smoothing (falls back gracefully if unavailable).
+## 3) Inputs You Must Provide
 
-Inputs
+You need either:
 
-This repo expects you already have (from a separate preprocessing/selection pipeline):
+A) A **residualized dataset CSV** (recommended), produced by your main pipeline  
+OR  
+B) Baseline + historical datasets + a selected-controls CSV (Step 2 supports merging + residualizing internally)
 
-A residualized dataset (CSV) containing:
+Minimum practical requirement for Step 1 and Step 3:
+- Step 1 reads a residualized dataset and writes observed coefficients.
+- Step 3 reads observed coefficients + placebo coefficients and makes plots.
 
-residualized outcome and weight variables
+Step 2 can run in a “full build” mode (merge + residualize) based on its CONFIG.
 
-residualized treatment variable
+---
 
-fixed-effect identifiers
+## 4) Step-by-Step
 
-partner identifiers / flags needed for spec masks
+### Step 1 — Observed 2SLS (No SE)
+Goal: compute the **observed** coefficients for the predefined partner-block specs.
 
-the fixed instrument columns
+What it does:
+- Loads a residualized dataset
+- Builds partner-block masks (e.g., Russia/China/USA/EU-block)
+- Absorbs two-way FE using fast iterative demeaning
+- Computes 2SLS coefficients with fixed IVs (no standard errors)
+- Writes **one row** to CSV
 
-Additionally, Step 2 can optionally merge from baseline + historical sources if you prefer to construct the working panel internally (it is written to support that mode).
+Output:
+- results/observed_coefficients.csv
 
-Step 1 — Observed 2SLS (No SE)
-
-Purpose: Compute the observed 2SLS coefficients on the residualized dataset (single run).
-
-What it does
-
-Loads the residualized dataset
-
-Builds partner-block masks (e.g., Russia / China / USA / EU block)
-
-Absorbs two-way FE using fast iterative demeaning
-
-Computes 2SLS coefficients with fixed IVs (no standard errors)
-
-Writes one-row CSV of observed coefficients
-
-Output
-
-observed_coefficients.csv (one row; one column per specification)
-
-Run
-
+Run:
 python step1_observed_2sls.py
 
-Step 2 — Spatial Randomization Inference Engine
+---
 
-Purpose: Generate the placebo distribution of coefficients under a spatial dependence model.
+### Step 2 — Spatial Randomization Inference Engine
+Goal: generate the **placebo distribution** of coefficients under spatial dependence.
 
-Core idea
-The placebo outcomes are simulated from a group-level spatial process:
+Core model (implemented at group level):
+- outcome = mean + spatial group shock + idiosyncratic noise
+- group shocks are correlated via an exponential kernel on group centroids
+- variance split (between-group vs within-group) is estimated from data
+- for each simulation draw:
+  - generate placebo outcomes
+  - residualize placebo outcomes on controls
+  - absorb two-way FE per spec
+  - compute 2SLS coefficient (fast cached IV algebra)
 
-outcome = mean + group spatial component + idiosyncratic noise
+Outputs:
+- results/coeff_ri.csv          (S rows × specs columns; recreated per run)
+- results/placebo_current.csv   (overwritten each batch; debugging artifact)
 
-spatial component is correlated across groups via an exponential kernel on group centroids
-
-variance is split into between-group (τ²) and within-group (σ²), estimated from the data
-
-What it does
-
-Builds / loads the working dataset (merge + FE ids + partner flags)
-
-Residualizes placebo outcomes against selected controls (internal residualizer)
-
-Absorbs two-way FE for each spec mask
-
-Computes 2SLS coefficients using cached IV objects for speed
-
-Writes:
-
-a coefficient draw matrix (S rows × #specs columns)
-
-a “current placebo batch” file (overwritten each batch) for debugging/inspection
-
-Outputs
-
-coeff_ri.csv (appended/recreated per run; RI draws)
-
-placebo_current.csv (overwritten each batch; quick sanity checks)
-
-Run
-
+Run:
 python step2_spatial_randomization_inference.py
 
-Step 3 — Visualization + RI p-values
+---
 
-Purpose: Convert RI draws into interpretable inference visuals.
+### Step 3 — Visualization + RI p-values
+Goal: produce plots and p-values comparing observed vs placebo coefficients.
 
-What it does
+What it does:
+- Loads observed coefficients (Step 1)
+- Loads placebo coefficients (Step 2)
+- For each spec:
+  - histogram / density of placebo distribution
+  - vertical line for observed coefficient
+  - two-sided RI p-value (share of |placebo| ≥ |observed|)
+- Saves one PNG per spec, and optionally a combined PDF
 
-Loads:
+Outputs:
+- plots/<spec>_ri.png
+- optional combined PDF (if enabled in CONFIG)
 
-observed coefficients (Step 1)
-
-placebo coefficients (Step 2)
-
-For each specification:
-
-plots placebo distribution
-
-overlays observed coefficient line
-
-computes two-sided RI p-value
-
-optionally overlays KDE / Normal fit
-
-Saves one PNG per spec + optional combined PDF
-
-Outputs
-
-plots/<spec>_ri.png
-
-optional combined PDF (all panels)
-
-Run
-
+Run:
 python step3_ri_visualization.py
 
-How to Use (Minimal)
+---
 
-Set paths in each script’s CONFIG block (input + output directories).
+## 5) How To Run (Minimal Recipe)
 
-Run the three steps in order:
+1) Open each script and edit the CONFIG block:
+- input paths (datasets)
+- output folder paths (results_dir / plots_dir)
+- optional simulation size S
+
+2) Run in order:
 
 python step1_observed_2sls.py
 python step2_spatial_randomization_inference.py
 python step3_ri_visualization.py
 
-Notes for Extension
+---
 
-Common modifications are intentionally localized:
+## 6) Outputs and Restart Logic
 
-Change the set of specifications: edit the spec builder function (mask logic)
+- Step 1 overwrites/rewrites the observed CSV.
+- Step 2 recreates coeff_ri.csv each run; placebo_current.csv is overwritten per batch.
+- Step 3 overwrites plots each run.
 
-Change FE structure: update the two FE keys in config
+If something fails, you can restart from the first missing artifact:
+- no observed CSV → rerun Step 1
+- no coeff_ri.csv → rerun Step 2
+- no plots → rerun Step 3
 
-Change spatial dependence: replace kernel or distance scale logic in the group engine
+---
 
-Increase simulation power: increase S and adjust batch_size for memory/throughput
+## 7) What To Customize (Where)
 
-Outputs You Should Commit vs Ignore
+- Change which coefficients/specs are produced:
+  - edit the spec builder in Step 1 and Step 2
 
-Recommended to commit:
+- Change spatial correlation model:
+  - edit the group spatial engine in Step 2 (kernel, distance scale, variance split)
 
-observed_coefficients.csv
+- Change FE structure:
+  - edit fe keys in CONFIG (Step 1 and Step 2)
 
-plots or PDF outputs you cite in paper drafts
+- Change simulation scale:
+  - edit S and batch_size in Step 2 CONFIG
 
-Recommended to ignore (gitignore):
+---
 
-placebo_current.csv (debug artifact; overwritten)
-
-large coeff_ri.csv if S is large (consider compressing or storing externally)
-
-License
+## License
 
 MIT
-
